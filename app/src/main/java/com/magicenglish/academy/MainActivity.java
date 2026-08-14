@@ -16,13 +16,11 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.Text;
 import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Locale;
@@ -43,12 +41,17 @@ public class MainActivity extends Activity {
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setAllowFileAccess(true);
-        webView.setWebViewClient(new WebViewClient());
         webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebViewClient(new WebViewClient(){
+            @Override public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                view.evaluateJavascript("try{Object.defineProperty(Array.prototype,'innerHTML',{set:function(v){var e=document.getElementById('board');if(e)e.innerHTML=v},configurable:true});Array.prototype.appendChild=function(x){var e=document.getElementById('board');if(e)e.appendChild(x)}}catch(e){}", null);
+            }
+        });
         webView.addJavascriptInterface(new NativeBridge(), "Android");
         textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
         tts = new TextToSpeech(this, status -> { if (status == TextToSpeech.SUCCESS) { tts.setLanguage(Locale.US); tts.setSpeechRate(0.88f); } });
-        webView.loadUrl("file:///android_asset/index_v13.html");
+        webView.loadUrl("file:///android_asset/index_v15.html");
     }
 
     public class NativeBridge {
@@ -80,10 +83,10 @@ public class MainActivity extends Activity {
         if (requestCode == REQ_CAMERA_IMAGE) { Bundle extras = data.getExtras(); Bitmap bitmap = extras != null ? (Bitmap) extras.get("data") : null; if (bitmap != null) processOcr(InputImage.fromBitmap(bitmap, 0)); else sendOcrError("没有获取到拍照图片"); }
         else if (requestCode == REQ_GALLERY_IMAGE) { Uri uri = data.getData(); if (uri != null) { try { processOcr(InputImage.fromFilePath(this, uri)); } catch (IOException e) { sendOcrError("读取图片失败"); } } }
     }
-    private void processOcr(InputImage image) { runOnUiThread(() -> webView.evaluateJavascript("window.onOcrStarted && window.onOcrStarted()", null)); textRecognizer.process(image).addOnSuccessListener(this::sendOcrResult).addOnFailureListener(e -> sendOcrError("文字识别失败：" + e.getMessage())); }
-    private void sendOcrResult(Text visionText) { String text = visionText != null ? visionText.getText() : ""; String safe = jsEscape(text); runOnUiThread(() -> webView.evaluateJavascript("window.onOcrResult && window.onOcrResult('" + safe + "')", null)); }
-    private void sendOcrError(String message) { String safe = jsEscape(message == null ? "识别失败" : message); runOnUiThread(() -> webView.evaluateJavascript("window.onOcrError && window.onOcrError('" + safe + "')", null)); }
-    private void sendSpeechResult(String result) { final String safe = jsEscape(result == null ? "" : result); runOnUiThread(() -> webView.evaluateJavascript("window.onSpeechResult('" + safe + "')", null)); }
+    private void processOcr(InputImage image) { runOnUiThread(() -> webView.evaluateJavascript("window.onOcrStarted&&window.onOcrStarted()", null)); textRecognizer.process(image).addOnSuccessListener(this::sendOcrResult).addOnFailureListener(e -> sendOcrError("文字识别失败：" + e.getMessage())); }
+    private void sendOcrResult(Text visionText) { String safe = jsEscape(visionText != null ? visionText.getText() : ""); runOnUiThread(() -> webView.evaluateJavascript("window.onOcrResult&&window.onOcrResult('" + safe + "')", null)); }
+    private void sendOcrError(String message) { String safe = jsEscape(message == null ? "识别失败" : message); runOnUiThread(() -> webView.evaluateJavascript("window.onOcrError&&window.onOcrError('" + safe + "')", null)); }
+    private void sendSpeechResult(String result) { String safe = jsEscape(result == null ? "" : result); runOnUiThread(() -> webView.evaluateJavascript("window.onSpeechResult('" + safe + "')", null)); }
     private String jsEscape(String s) { return s.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r").replace("\n", "\\n").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"); }
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == REQ_AUDIO && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) beginRecognition(); }
     @Override protected void onDestroy() { if (tts != null) { tts.stop(); tts.shutdown(); } if (recognizer != null) recognizer.destroy(); if (textRecognizer != null) textRecognizer.close(); if (webView != null) webView.destroy(); super.onDestroy(); }
